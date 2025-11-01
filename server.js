@@ -15,6 +15,9 @@ app.use(cors());
 app.use(express.json());
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+app.get("/", (req, res) => {
+  res.send("📚 Book API is running...");
+});
 app.use("/api/books", bookRoutes);
 app.use("/api/auth", authRoutes);
 
