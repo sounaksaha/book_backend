@@ -1,0 +1,147 @@
+import Book from "../models/Book.js";
+import ftp from "basic-ftp";
+import dotenv from "dotenv";
+import { Readable } from "stream";
+dotenv.config();
+
+/**
+ * Upload file to Hostinger FTP and return its public URL
+ */
+const uploadToHostinger = async (file) => {
+  const client = new ftp.Client();
+  client.ftp.verbose = true; // Show detailed FTP logs for debugging
+
+  try {
+    // 🔹 Connect to FTP
+    await client.access({
+      host: process.env.FTP_HOST,
+      port: process.env.FTP_PORT || 21,
+      user: process.env.FTP_USER,
+      password: process.env.FTP_PASS.replace(/"/g, ""), // remove quotes if any
+      secure: false,
+      secureOptions: { rejectUnauthorized: false },
+    });
+
+    const timestamp = Date.now();
+    const remoteDir = process.env.FTP_UPLOAD_DIR || "assets";
+    const remoteFileName = `book_${timestamp}_${file.originalname}`;
+    const remotePath = `/${remoteDir}/${remoteFileName}`;
+
+    console.log("📤 Uploading to:", remotePath);
+
+    // ✅ Convert file buffer to readable stream
+    const stream = Readable.from(file.buffer);
+
+    // ✅ Ensure the directory exists (creates it if missing)
+    await client.ensureDir(remoteDir);
+
+    // ✅ Upload file directly to that directory
+    await client.uploadFrom(stream, remoteFileName);
+
+    console.log("✅ FTP Upload Complete");
+    client.close();
+
+    // ✅ Return public URL
+    return `${process.env.FTP_PUBLIC_URL}/${remoteFileName}`;
+  } catch (err) {
+    console.error("❌ FTP Upload Error:", err.message);
+    client.close();
+    throw new Error("Failed to upload image to Hostinger FTP");
+  }
+};
+
+/**
+ * Create Book
+ */
+export const createBook = async (req, res) => {
+  try {
+    const { bookName, description, mrp, discount, type, count, authorName } = req.body;
+
+    // 🔸 Validate mandatory fields
+    if (!bookName || !mrp) {
+      return res.status(400).json({
+        success: false,
+        message: "Book name and MRP are required",
+      });
+    }
+
+    let imageUrl = null;
+
+    // 🔹 Upload image if provided
+    if (req.file) {
+      imageUrl = await uploadToHostinger(req.file);
+    }
+
+    // 🔹 Create a new book document
+    const newBook = new Book({
+      bookName,
+      description,
+      mrp,
+      discount,
+      type,
+      count,
+      authorName,
+      imageUrl,
+    });
+
+    await newBook.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Book added successfully",
+      data: newBook,
+    });
+  } catch (error) {
+    console.error("Book creation error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server Error",
+    });
+  }
+};
+
+/**
+ * Get All Books
+ */
+export const getAllBooks = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "" } = req.query;
+
+    const filter = {};
+
+    // 🔍 Unified search across multiple fields
+    if (search) {
+      filter.$or = [
+        { bookName: { $regex: search, $options: "i" } },
+        { authorName: { $regex: search, $options: "i" } },
+        { type: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const pageNumber = parseInt(page);
+    const pageSize = parseInt(limit);
+    const skip = (pageNumber - 1) * pageSize;
+
+    const books = await Book.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize);
+
+    const totalBooks = await Book.countDocuments(filter);
+    const totalPages = Math.ceil(totalBooks / pageSize);
+
+    res.status(200).json({
+      success: true,
+      data: books,
+      pagination: {
+        totalBooks,
+        totalPages,
+        currentPage: pageNumber,
+        pageSize,
+      },
+    });
+  } catch (error) {
+    console.error("Fetch error:", error);
+    res.status(500).json({ success: false, message: "Error fetching books" });
+  }
+};
