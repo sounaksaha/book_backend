@@ -50,9 +50,7 @@ const uploadToHostinger = async (file) => {
   }
 };
 
-/**
- * Create Book
- */
+
 export const createBook = async (req, res) => {
   try {
     const { bookName, description, mrp, discount, type, count, authorName } = req.body;
@@ -100,9 +98,7 @@ export const createBook = async (req, res) => {
   }
 };
 
-/**
- * Get All Books
- */
+
 export const getAllBooks = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "" } = req.query;
@@ -145,3 +141,4 @@ export const getAllBooks = async (req, res) => {
     res.status(500).json({ success: false, message: "Error fetching books" });
   }
 };
+

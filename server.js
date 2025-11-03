@@ -5,7 +5,8 @@ import path from "path";
 import connectDB from "./config/db.js";
 import bookRoutes from "./routes/bookRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-
+import bookTypeRoutes from "./routes/bookTypeRoutes.js";
+import publicBookRoutes from "./routes/publicBookRoutes.js"
 dotenv.config();
 connectDB();
 
@@ -20,6 +21,8 @@ app.get("/", (req, res) => {
 });
 app.use("/api/books", bookRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/book-types", bookTypeRoutes);
+app.use("/api/public/books", publicBookRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
