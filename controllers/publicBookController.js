@@ -36,3 +36,29 @@ export const getPublicBooks = async (req, res) => {
     });
   }
 };
+
+export const getBookById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const book = await Book.findById(id);
+
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book type not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: book,
+    });
+  } catch (error) {
+    console.error("Fetch book by ID error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching book type",
+    });
+  }
+};

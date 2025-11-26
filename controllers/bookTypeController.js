@@ -39,6 +39,8 @@ export const getAllBookTypes = async (req, res) => {
   }
 };
 
+
+
 // ===== DELETE TYPE =====
 export const deleteBookType = async (req, res) => {
   try {
