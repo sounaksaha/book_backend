@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { createBook, getAllBooks } from "../controllers/bookController.js";
+import { createBook, getAllBooks, getBookById,  } from "../controllers/bookController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -11,5 +11,6 @@ const upload = multer({ storage });
 // Routes
 router.post("/add", protect, upload.single("image"), createBook);
 router.get("/", getAllBooks);
+router.get("/:id", getBookById );
 
 export default router;

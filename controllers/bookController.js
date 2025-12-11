@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 import Book from "../models/Book.js";
 import ftp from "basic-ftp";
 import dotenv from "dotenv";
@@ -139,6 +141,42 @@ export const getAllBooks = async (req, res) => {
   } catch (error) {
     console.error("Fetch error:", error);
     res.status(500).json({ success: false, message: "Error fetching books" });
+  }
+};
+
+// ===== GET BOOK BY ID =====
+// ===== GET BOOK BY ID =====
+export const getBookById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate MongoDB ID format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid book ID format",
+      });
+    }
+
+    const book = await Book.findById(id);
+
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: book,
+    });
+  } catch (error) {
+    console.error("Get Book By ID Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching book details",
+    });
   }
 };
 
