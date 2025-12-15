@@ -130,45 +130,45 @@ export const verifyPayment = async (req, res) => {
 
 export const getAllOrders = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "" } = req.query;
+    const { page = 1, limit = 10 } = req.query;
 
     const skip = (page - 1) * limit;
 
-    const query = {};
-
-    if (search) {
-      query.$or = [
-        { user_name: { $regex: search, $options: "i" } },
-        { user_mobile: { $regex: search, $options: "i" } }
-      ];
-    }
-
-    let orders = await Order.find(query)
-      .populate("book_id", "bookName authorName mrp imageUrl")
+    const orders = await Order.find()
+      .populate("books.book_id", "bookName authorName mrp imageUrl")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
       .lean();
 
-    // 🔍 Manual search on populated bookName
-    if (search) {
-      const lower = search.toLowerCase();
+    // 🔁 Format response to clearly show multiple books
+    const formattedOrders = orders.map(order => ({
+      _id: order._id,
+      user_name: order.user_name,
+      user_mobile: order.user_mobile,
+      address: order.address,
+      amount: order.amount,
+      status: order.status,
+      createdAt: order.createdAt,
 
-      orders = orders.filter(order =>
-        order.book_id?.bookName?.toLowerCase().includes(lower) ||
-        order.user_name?.toLowerCase().includes(lower) ||
-        order.user_mobile?.toLowerCase().includes(lower)
-      );
-    }
+      books: order.books.map(item => ({
+        book_id: item.book_id?._id,
+        bookName: item.book_id?.bookName,
+        authorName: item.book_id?.authorName,
+        mrp: item.book_id?.mrp,
+        imageUrl: item.book_id?.imageUrl,
+        quantity: item.count
+      }))
+    }));
 
-    const totalOrders = await Order.countDocuments(query);
+    const totalOrders = await Order.countDocuments();
 
     res.json({
       success: true,
       total: totalOrders,
       currentPage: Number(page),
       totalPages: Math.ceil(totalOrders / limit),
-      data: orders
+      data: formattedOrders
     });
 
   } catch (error) {

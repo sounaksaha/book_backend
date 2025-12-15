@@ -180,3 +180,139 @@ export const getBookById = async (req, res) => {
   }
 };
 
+export const updateBookById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 🔹 Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid book ID",
+      });
+    }
+
+    const {
+      bookName,
+      description,
+      mrp,
+      discount,
+      type,
+      count,
+      authorName,
+    } = req.body;
+
+    // 🔹 Find existing book
+    const book = await Book.findById(id);
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found",
+      });
+    }
+
+    // 🔹 Upload new image if provided
+    let imageUrl = book.imageUrl;
+    if (req.file) {
+      imageUrl = await uploadToHostinger(req.file);
+    }
+
+    // 🔹 Update fields
+    book.bookName = bookName ?? book.bookName;
+    book.description = description ?? book.description;
+    book.mrp = mrp ?? book.mrp;
+    book.discount = discount ?? book.discount;
+    book.type = type ?? book.type;
+    book.count = count ?? book.count;
+    book.authorName = authorName ?? book.authorName;
+    book.imageUrl = imageUrl;
+
+    await book.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Book updated successfully",
+      data: book,
+    });
+  } catch (error) {
+    console.error("Book update error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server Error",
+    });
+  }
+};
+
+
+const deleteFromHostinger = async (imageUrl) => {
+  if (!imageUrl) return;
+
+  const client = new ftp.Client();
+  client.ftp.verbose = false;
+
+  try {
+    await client.access({
+      host: process.env.FTP_HOST,
+      port: process.env.FTP_PORT || 21,
+      user: process.env.FTP_USER,
+      password: process.env.FTP_PASS.replace(/"/g, ""),
+      secure: false,
+      secureOptions: { rejectUnauthorized: false },
+    });
+
+    // Extract filename from URL
+    const fileName = path.basename(imageUrl);
+    const remoteDir = process.env.FTP_UPLOAD_DIR || "assets";
+    const remotePath = `/${remoteDir}/${fileName}`;
+
+    await client.remove(remotePath);
+    client.close();
+  } catch (error) {
+    console.error("FTP delete error:", error.message);
+    client.close();
+  }
+};
+
+/* ----------------------------------
+   Delete Book API
+---------------------------------- */
+export const deleteBookById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid book ID",
+      });
+    }
+
+    const book = await Book.findById(id);
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found",
+      });
+    }
+
+    // 🗑 Delete image from FTP (if exists)
+    if (book.imageUrl) {
+      await deleteFromHostinger(book.imageUrl);
+    }
+
+    // 🗑 Delete book from DB
+    await Book.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Book deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete Book Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting book",
+    });
+  }
+};
