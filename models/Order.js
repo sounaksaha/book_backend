@@ -32,27 +32,45 @@ const orderSchema = new mongoose.Schema(
       required: true
     },
 
-    // Amount sent from frontend
+    // Amount calculated on backend
     amount: {
       type: Number,
       required: true
     },
 
-    // Razorpay fields
+    // Razorpay identifiers
     order_id: {
-      type: String
+      type: String,
+      unique: true
     },
+
     payment_id: {
       type: String
     },
+
     signature: {
       type: String
     },
 
+    // Business status
     status: {
       type: String,
       enum: ["PENDING", "PAID", "FAILED"],
       default: "PENDING"
+    },
+
+    // Razorpay raw status
+    razorpay_status: {
+      type: String
+    },
+
+    payment_method: {
+      type: String
+    },
+
+    currency: {
+      type: String,
+      default: "INR"
     },
 
     metadata: {

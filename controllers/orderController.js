@@ -71,77 +71,119 @@ export const createOrder = async (req, res) => {
 
 export const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
-      req.body;
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature
+    } = req.body;
 
+    // 1️⃣ Validate input
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing fields" });
+      return res.status(400).json({
+        success: false,
+        message: "Missing payment fields"
+      });
     }
 
-    // Step 1: validate signature
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    // 2️⃣ Verify Razorpay signature
+    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
 
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_SECRET)
-      .update(body.toString())
+      .update(body)
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature) {
-      return res.json({ success: false, message: "Invalid signature" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment signature"
+      });
     }
 
-    // Step 2: Fetch real payment details
-    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    // 3️⃣ Fetch payment from Razorpay (source of truth)
+    const payment = await razorpay.payments.fetch(
+      razorpay_payment_id
+    );
 
-    const realAmount = payment.amount / 100; // convert paise → INR
+    // 4️⃣ Map Razorpay status → Business status
+    let orderStatus = "PENDING";
 
-    // Step 3: Update order in database
+    if (payment.status === "captured") {
+      orderStatus = "PAID";
+    } else if (payment.status === "failed") {
+      orderStatus = "FAILED";
+    }
+
+    const realAmount = payment.amount / 100; // paise → INR
+
+    // 5️⃣ Update order safely
     const updatedOrder = await Order.findOneAndUpdate(
       { order_id: razorpay_order_id },
       {
         payment_id: razorpay_payment_id,
         signature: razorpay_signature,
         amount: realAmount,
-        status: payment.status,
+        status: orderStatus,
+        razorpay_status: payment.status,
         payment_method: payment.method,
         currency: payment.currency,
-        isPaid: true,
+        metadata: payment
       },
       { new: true }
     );
 
     if (!updatedOrder) {
-      return res.json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found"
+      });
     }
 
-    // Step 4: Success response
-    res.json({
+    // 6️⃣ Success response
+    return res.status(200).json({
       success: true,
       message: "Payment verified successfully",
-      order: updatedOrder,
+      order: updatedOrder
     });
+
   } catch (error) {
     console.error("Verify Payment Error:", error);
-    res.status(500).json({ success: false, error: "Server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 };
 
 export const getAllOrders = async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      fromDate,
+      toDate
+    } = req.query;
 
     const skip = (page - 1) * limit;
 
-    const orders = await Order.find()
+    // 📅 Date filter
+    let dateFilter = {};
+    if (fromDate && toDate) {
+      dateFilter.createdAt = {
+        $gte: new Date(fromDate + "T00:00:00.000Z"),
+        $lte: new Date(toDate + "T23:59:59.999Z")
+      };
+    }
+
+    // 📦 Fetch orders
+    const orders = await Order.find(dateFilter)
       .populate("books.book_id", "bookName authorName mrp imageUrl")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
       .lean();
 
-    // 🔁 Format response to clearly show multiple books
+    // 🔁 Format response
     const formattedOrders = orders.map(order => ({
       _id: order._id,
       user_name: order.user_name,
@@ -161,7 +203,8 @@ export const getAllOrders = async (req, res) => {
       }))
     }));
 
-    const totalOrders = await Order.countDocuments();
+    // 📊 Count for pagination
+    const totalOrders = await Order.countDocuments(dateFilter);
 
     res.json({
       success: true,
@@ -176,6 +219,7 @@ export const getAllOrders = async (req, res) => {
     res.status(500).json({ success: false });
   }
 };
+
 
 
 export const getOrderById = async (req, res) => {
