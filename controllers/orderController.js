@@ -8,38 +8,66 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_SECRET,
 });
 
-// Create Order
+
+
 export const createOrder = async (req, res) => {
   try {
-    const { book_id, count, user_mobile, user_name, address, amount } =
-      req.body;
-
-    const rpOrder = await razorpay.orders.create({
-      amount: amount * 100, // real amount
-      currency: "INR",
-    });
-
-    const newOrder = await Order.create({
-      book_id,
-      count,
+    const {
+      books,
       user_mobile,
       user_name,
       address,
-      amount, // store real amount
-      order_id: rpOrder.id,
-      metadata: { source: "mobile_app" },
+      amount
+    } = req.body;
+
+    // Basic validation
+    if (!books || books.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Books are required"
+      });
+    }
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid amount is required"
+      });
+    }
+
+    // Create Razorpay order
+    const rpOrder = await razorpay.orders.create({
+      amount: amount * 100, // INR to paise
+      currency: "INR"
     });
 
-    res.json({
+    // Save order in DB
+    const newOrder = await Order.create({
+      books,
+      user_mobile,
+      user_name,
+      address,
+      amount,
+      order_id: rpOrder.id,
+      metadata: {
+        source: "frontend"
+      }
+    });
+
+    return res.status(201).json({
       success: true,
       order: newOrder,
-      razorpay_order: rpOrder,
+      razorpay_order: rpOrder
     });
   } catch (error) {
     console.error("Create order error:", error);
-    res.status(500).json({ success: false });
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 };
+
 
 export const verifyPayment = async (req, res) => {
   try {
