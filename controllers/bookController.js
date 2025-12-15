@@ -9,55 +9,63 @@ dotenv.config();
 /**
  * Upload file to Hostinger FTP and return its public URL
  */
+// import ftp from "basic-ftp";
+// import { Readable } from "stream";
+// import Book from "../models/Book.js";
+
+/* ------------------------------------------------
+   FTP Upload Helper (Hostinger)
+------------------------------------------------ */
 const uploadToHostinger = async (file) => {
   const client = new ftp.Client();
-  client.ftp.verbose = true; // Show detailed FTP logs for debugging
+  client.ftp.verbose = false;
 
   try {
-    // 🔹 Connect to FTP
     await client.access({
       host: process.env.FTP_HOST,
-      port: process.env.FTP_PORT || 21,
       user: process.env.FTP_USER,
-      password: process.env.FTP_PASS.replace(/"/g, ""), // remove quotes if any
+      password: process.env.FTP_PASS,
+      port: process.env.FTP_PORT || 21,
       secure: false,
-      secureOptions: { rejectUnauthorized: false },
     });
 
-    const timestamp = Date.now();
+    const fileName = `book_${Date.now()}_${file.originalname}`;
     const remoteDir = process.env.FTP_UPLOAD_DIR || "assets";
-    const remoteFileName = `book_${timestamp}_${file.originalname}`;
-    const remotePath = `/${remoteDir}/${remoteFileName}`;
 
-    console.log("📤 Uploading to:", remotePath);
-
-    // ✅ Convert file buffer to readable stream
-    const stream = Readable.from(file.buffer);
-
-    // ✅ Ensure the directory exists (creates it if missing)
+    // Ensure directory exists
     await client.ensureDir(remoteDir);
 
-    // ✅ Upload file directly to that directory
-    await client.uploadFrom(stream, remoteFileName);
+    // Upload from memory buffer
+    const stream = Readable.from(file.buffer);
+    await client.uploadFrom(stream, fileName);
 
-    console.log("✅ FTP Upload Complete");
     client.close();
 
-    // ✅ Return public URL
-    return `${process.env.FTP_PUBLIC_URL}/${remoteFileName}`;
-  } catch (err) {
-    console.error("❌ FTP Upload Error:", err.message);
+    // Public URL
+    return `${process.env.FTP_PUBLIC_URL}/${fileName}`;
+  } catch (error) {
     client.close();
-    throw new Error("Failed to upload image to Hostinger FTP");
+    console.error("FTP Upload Error:", error.message);
+    throw new Error("Image upload failed");
   }
 };
 
-
+/* ------------------------------------------------
+   CREATE BOOK CONTROLLER
+------------------------------------------------ */
 export const createBook = async (req, res) => {
   try {
-    const { bookName, description, mrp, discount, type, count, authorName } = req.body;
+    const {
+      bookName,
+      description,
+      mrp,
+      discount,
+      type,
+      count,
+      authorName,
+    } = req.body;
 
-    // 🔸 Validate mandatory fields
+    // Validation
     if (!bookName || !mrp) {
       return res.status(400).json({
         success: false,
@@ -67,33 +75,33 @@ export const createBook = async (req, res) => {
 
     let imageUrl = null;
 
-    // 🔹 Upload image if provided
+    // Upload image if present
     if (req.file) {
       imageUrl = await uploadToHostinger(req.file);
     }
 
-    // 🔹 Create a new book document
+    // Create book
     const newBook = new Book({
       bookName,
       description,
-      mrp,
-      discount,
+      mrp: Number(mrp),
+      discount: Number(discount || 0),
       type,
-      count,
+      count: Number(count || 0),
       authorName,
       imageUrl,
     });
 
     await newBook.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Book added successfully",
       data: newBook,
     });
   } catch (error) {
     console.error("Book creation error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message || "Server Error",
     });
