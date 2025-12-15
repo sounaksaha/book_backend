@@ -32,29 +32,30 @@ const uploadToHostinger = async (file) => {
     const fileName = `book_${Date.now()}_${file.originalname}`;
     const remoteDir = process.env.FTP_UPLOAD_DIR || "assets";
 
-    // Ensure directory exists
     await client.ensureDir(remoteDir);
 
-    // Upload from memory buffer
     const stream = Readable.from(file.buffer);
     await client.uploadFrom(stream, fileName);
 
     client.close();
 
-    // Public URL
-    return `${process.env.FTP_PUBLIC_URL}/${fileName}`;
-  } catch (error) {
+    const imageUrl = `${process.env.FTP_PUBLIC_URL}/${fileName}`;
+    console.log("✅ IMAGE UPLOADED:", imageUrl);
+
+    return imageUrl;
+  } catch (err) {
     client.close();
-    console.error("FTP Upload Error:", error.message);
+    console.error("❌ FTP ERROR:", err.message);
     throw new Error("Image upload failed");
   }
 };
 
-/* ------------------------------------------------
-   CREATE BOOK CONTROLLER
------------------------------------------------- */
+/* ---------- CREATE BOOK ---------- */
 export const createBook = async (req, res) => {
   try {
+    console.log("HEADERS:", req.headers["content-type"]);
+    console.log("FILE:", req.file);
+
     const {
       bookName,
       description,
@@ -65,46 +66,41 @@ export const createBook = async (req, res) => {
       authorName,
     } = req.body;
 
-    // Validation
     if (!bookName || !mrp) {
-      return res.status(400).json({
-        success: false,
-        message: "Book name and MRP are required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Book name and MRP required" });
     }
 
     let imageUrl = null;
 
-    // Upload image if present
     if (req.file) {
       imageUrl = await uploadToHostinger(req.file);
     }
 
-    // Create book
-    const newBook = new Book({
+    const book = new Book({
       bookName,
       description,
       mrp: Number(mrp),
       discount: Number(discount || 0),
-      type,
       count: Number(count || 0),
+      type,
       authorName,
       imageUrl,
     });
 
-    await newBook.save();
+    await book.save();
+
+    console.log("📚 SAVED IMAGE URL:", book.imageUrl);
 
     return res.status(201).json({
       success: true,
       message: "Book added successfully",
-      data: newBook,
+      data: book,
     });
-  } catch (error) {
-    console.error("Book creation error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Server Error",
-    });
+  } catch (err) {
+    console.error("❌ CREATE BOOK ERROR:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 

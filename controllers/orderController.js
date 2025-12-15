@@ -68,7 +68,6 @@ export const createOrder = async (req, res) => {
   }
 };
 
-
 export const verifyPayment = async (req, res) => {
   try {
     const {
@@ -220,8 +219,6 @@ export const getAllOrders = async (req, res) => {
   }
 };
 
-
-
 export const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -270,3 +267,58 @@ export const getOrderById = async (req, res) => {
     });
   }
 };
+
+export const getTodayBookSales = async (req, res) => {
+  try {
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+
+    const nowIST = new Date(Date.now() + IST_OFFSET);
+    const startOfDayIST = new Date(nowIST);
+    startOfDayIST.setHours(0, 0, 0, 0);
+
+    const endOfDayIST = new Date(nowIST);
+    endOfDayIST.setHours(23, 59, 59, 999);
+
+    const startUTC = new Date(startOfDayIST.getTime() - IST_OFFSET);
+    const endUTC = new Date(endOfDayIST.getTime() - IST_OFFSET);
+
+    // 🔹 Fetch PAID orders only
+    const orders = await Order.find({
+      status: "PAID",
+      createdAt: { $gte: startUTC, $lte: endUTC },
+    });
+
+    let totalRevenue = 0;
+    let totalBooksSold = 0;
+
+    orders.forEach((order) => {
+      // ✅ amount already includes all books
+      totalRevenue += order.amount;
+
+      // ✅ count books separately
+      order.books.forEach((b) => {
+        totalBooksSold += b.count;
+      });
+    });
+
+    res.json({
+      success: true,
+      date: startOfDayIST.toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+      }),
+      timezone: "Asia/Kolkata",
+      data: {
+        totalOrders: orders.length,
+        totalBooksSold,
+        totalRevenue, // ✅ MATCHES DB EXACTLY
+      },
+    });
+  } catch (error) {
+    console.error("Today book sales error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch today book sales",
+    });
+  }
+};
+

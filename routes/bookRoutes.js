@@ -5,11 +5,11 @@ import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-const storage = multer.memoryStorage(); // ✅ buffer in memory for FTP upload
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Routes
-router.post("/add", protect, upload.single("image"), createBook);
+router.post("/add", upload.single("image"), protect, createBook);
+
 router.get("/", getAllBooks);
 router.get("/:id", getBookById );
 router.put("/update/:id", upload.single("image"), updateBookById);
