@@ -7,6 +7,7 @@ import bookRoutes from "./routes/bookRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import bookTypeRoutes from "./routes/bookTypeRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
+import blogRoute from "./routes/blogRoute.js";
 
 import publicBookRoutes from "./routes/publicBookRoutes.js"
 dotenv.config();
@@ -26,6 +27,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/book-types", bookTypeRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/public/books", publicBookRoutes);
+app.use("/api/blogs",blogRoute)
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
