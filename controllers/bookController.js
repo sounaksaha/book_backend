@@ -4,6 +4,7 @@ import Book from "../models/Book.js";
 import ftp from "basic-ftp";
 import dotenv from "dotenv";
 import { Readable } from "stream";
+import BookType from "../models/BookType.js";
 dotenv.config();
 
 /**
@@ -61,15 +62,26 @@ export const createBook = async (req, res) => {
       description,
       mrp,
       discount,
-      type,
+      bookTypeId,   // ✅ changed
       count,
       authorName,
     } = req.body;
 
-    if (!bookName || !mrp) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Book name and MRP required" });
+    // 🔒 Basic validation
+    if (!bookName || !mrp || !bookTypeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Book name, MRP and Book Type are required",
+      });
+    }
+
+    // 🔒 Ensure BookType exists
+    const bookTypeExists = await BookType.findById(bookTypeId);
+    if (!bookTypeExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Book Type",
+      });
     }
 
     let imageUrl = null;
@@ -84,14 +96,12 @@ export const createBook = async (req, res) => {
       mrp: Number(mrp),
       discount: Number(discount || 0),
       count: Number(count || 0),
-      type,
+      bookTypeId, // ✅ stored as ObjectId
       authorName,
       imageUrl,
     });
 
     await book.save();
-
-    console.log("📚 SAVED IMAGE URL:", book.imageUrl);
 
     return res.status(201).json({
       success: true,
@@ -100,7 +110,10 @@ export const createBook = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ CREATE BOOK ERROR:", err);
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
@@ -109,22 +122,30 @@ export const getAllBooks = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "" } = req.query;
 
-    const filter = {};
-
-    // 🔍 Unified search across multiple fields
-    if (search) {
-      filter.$or = [
-        { bookName: { $regex: search, $options: "i" } },
-        { authorName: { $regex: search, $options: "i" } },
-        { type: { $regex: search, $options: "i" } },
-      ];
-    }
-
     const pageNumber = parseInt(page);
     const pageSize = parseInt(limit);
     const skip = (pageNumber - 1) * pageSize;
 
+    let filter = {};
+
+    // 🔍 Search logic
+    if (search) {
+      // find matching book types
+      const bookTypes = await BookType.find({
+        name: { $regex: search, $options: "i" },
+      }).select("_id");
+
+      const bookTypeIds = bookTypes.map((bt) => bt._id);
+
+      filter.$or = [
+        { bookName: { $regex: search, $options: "i" } },
+        { authorName: { $regex: search, $options: "i" } },
+        { bookTypeId: { $in: bookTypeIds } },
+      ];
+    }
+
     const books = await Book.find(filter)
+      .populate("bookTypeId", "name description")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize);
@@ -144,17 +165,19 @@ export const getAllBooks = async (req, res) => {
     });
   } catch (error) {
     console.error("Fetch error:", error);
-    res.status(500).json({ success: false, message: "Error fetching books" });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching books",
+    });
   }
 };
 
-// ===== GET BOOK BY ID =====
+
 // ===== GET BOOK BY ID =====
 export const getBookById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate MongoDB ID format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -162,7 +185,10 @@ export const getBookById = async (req, res) => {
       });
     }
 
-    const book = await Book.findById(id);
+    const book = await Book.findById(id).populate(
+      "bookTypeId",
+      "name description"
+    );
 
     if (!book) {
       return res.status(404).json({
@@ -184,11 +210,11 @@ export const getBookById = async (req, res) => {
   }
 };
 
+
 export const updateBookById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 🔹 Validate MongoDB ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -201,12 +227,11 @@ export const updateBookById = async (req, res) => {
       description,
       mrp,
       discount,
-      type,
+      bookTypeId,
       count,
       authorName,
     } = req.body;
 
-    // 🔹 Find existing book
     const book = await Book.findById(id);
     if (!book) {
       return res.status(404).json({
@@ -215,28 +240,50 @@ export const updateBookById = async (req, res) => {
       });
     }
 
-    // 🔹 Upload new image if provided
-    let imageUrl = book.imageUrl;
-    if (req.file) {
-      imageUrl = await uploadToHostinger(req.file);
+    // 🔒 Validate BookType if provided
+    if (bookTypeId) {
+      if (!mongoose.Types.ObjectId.isValid(bookTypeId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid Book Type ID",
+        });
+      }
+
+      const bookTypeExists = await BookType.findById(bookTypeId);
+      if (!bookTypeExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Book Type does not exist",
+        });
+      }
+
+      book.bookTypeId = bookTypeId;
     }
 
-    // 🔹 Update fields
+    // 🔹 Upload new image if provided
+    if (req.file) {
+      book.imageUrl = await uploadToHostinger(req.file);
+    }
+
+    // 🔹 Update fields safely
     book.bookName = bookName ?? book.bookName;
     book.description = description ?? book.description;
     book.mrp = mrp ?? book.mrp;
     book.discount = discount ?? book.discount;
-    book.type = type ?? book.type;
     book.count = count ?? book.count;
     book.authorName = authorName ?? book.authorName;
-    book.imageUrl = imageUrl;
 
     await book.save();
+
+    const updatedBook = await Book.findById(book._id).populate(
+      "bookTypeId",
+      "name description"
+    );
 
     res.status(200).json({
       success: true,
       message: "Book updated successfully",
-      data: book,
+      data: updatedBook,
     });
   } catch (error) {
     console.error("Book update error:", error);
@@ -246,6 +293,7 @@ export const updateBookById = async (req, res) => {
     });
   }
 };
+
 
 
 const deleteFromHostinger = async (imageUrl) => {

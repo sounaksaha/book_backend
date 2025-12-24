@@ -1,24 +1,26 @@
+import mongoose from "mongoose";
 import Book from "../models/Book.js";
 
 // 📘 Public API — Get All Books (no pagination, with search)
 export const getPublicBooks = async (req, res) => {
   try {
-    const { search = "", type = "" } = req.query;
+    const { search = "", bookTypeId = "" } = req.query;
 
-    // 🔍 Build search filter
     const filter = {};
 
+    // 🔍 Search by book name
     if (search) {
-      filter.bookName = { $regex: search, $options: "i" }; // case-insensitive
+      filter.bookName = { $regex: search, $options: "i" };
     }
 
-    if (type) {
-      filter.type = { $regex: type, $options: "i" };
+    // 🔍 Filter by Book Type ID
+    if (bookTypeId) {
+      filter.bookTypeId = bookTypeId;
     }
 
-    // 🧩 Fetch books without pagination
     const books = await Book.find(filter)
-      .select("-__v -createdAt -updatedAt") // optional: remove unnecessary fields
+      .populate("bookTypeId", "name") // ✅ include category name
+      .select("-__v -updatedAt")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -41,16 +43,25 @@ export const getBookById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const book = await Book.findById(id);
+    // 🔒 Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid book ID",
+      });
+    }
+
+    const book = await Book.findById(id)
+      .populate("bookTypeId", "name description");
 
     if (!book) {
       return res.status(404).json({
         success: false,
-        message: "Book type not found",
+        message: "Book not found",
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
       data: book,
     });
@@ -58,7 +69,7 @@ export const getBookById = async (req, res) => {
     console.error("Fetch book by ID error:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching book type",
+      message: "Error fetching book",
     });
   }
 };
